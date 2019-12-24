@@ -5,4 +5,4 @@ __all__ = ['testeFunc']
 # Cell
 def testeFunc(message):
     "doc string test"
-    print(f'The test message is: {message}')
+    return(f'The test message is: {message}')
