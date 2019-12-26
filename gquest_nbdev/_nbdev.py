@@ -8,5 +8,4 @@ modules = ["core.py"]
 
 git_url = "https://github.com/mrdbarros/gquest_nbdev/tree/master/"
 
-
 def custom_doc_links(name): return None
