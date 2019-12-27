@@ -1,6 +1,6 @@
 {
   "gquest_nbdev": {
     "Overview": "/",
-    "This a test for nbdev": "/core"
+    "Imports": "/core"
   }
 }

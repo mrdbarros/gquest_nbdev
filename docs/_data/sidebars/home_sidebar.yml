@@ -10,7 +10,7 @@ entries:
       title: Overview
       url: /
     - output: web,pdf
-      title: This a test for nbdev
+      title: Imports
       url: /core
     output: web
     title: gquest_nbdev
