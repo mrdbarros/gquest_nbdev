@@ -3,6 +3,10 @@
 __all__ = ['testeFunc']
 
 # Cell
+import nltk
+nltk.download('stopwords')
+
+# Cell
 def testeFunc(message):
     "doc string test"
     return(f'The test message is: {message}')
