@@ -2,10 +2,8 @@
 
 __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
-index = {"color": "00_core.ipynb",
-         "py.init_notebook_mode(connected": "00_core.ipynb",
-         "init_notebook_mode(connected": "00_core.ipynb",
-         "eng_stopwords": "00_core.ipynb",
+index = {"eng_stopwords": "00_core.ipynb",
+         "data_path": "00_core.ipynb",
          "train_data": "00_core.ipynb",
          "test_data": "00_core.ipynb",
          "sample_submission": "00_core.ipynb",
