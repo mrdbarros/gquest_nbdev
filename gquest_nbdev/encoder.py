@@ -4,14 +4,10 @@ __all__ = ['data_path', 'train_data', 'test_data', 'sample_submission']
 
 # Cell
 import pandas as pd # package for high-performance, easy-to-use data structures and data analysis
-import numpy as np # fundamental package for scientific computing with Python
-import matplotlib
-import matplotlib.pyplot as plt # for plotting
 
 import re
 
 import string
-import gc
 
 from fastai2.basics import *
 from fastai2.text.all import *

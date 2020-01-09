@@ -3,9 +3,9 @@
 __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
 index = {"data_path": "00_encoder.ipynb",
-         "train_data": "00_encoder.ipynb",
-         "test_data": "00_encoder.ipynb",
-         "sample_submission": "00_encoder.ipynb"}
+         "train_data": "01_decoder.ipynb",
+         "test_data": "01_decoder.ipynb",
+         "sample_submission": "01_decoder.ipynb"}
 
 modules = ["encoder.py",
            "decoder.py"]
