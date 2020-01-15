@@ -15,11 +15,14 @@ from fastai2.callback.all import *
 
 # Cell
 import os
+if os.path.basename(os.path.normpath(os.getcwd())) == "projetos":
+    os.chdir(Path(os.getcwd())/"gquest_nbdev")
 print(os.listdir("../data/gquest_data/"))
 data_path = Path("../data/gquest_data/")
 
 # Cell
 print('Reading data...')
+
 train_data = pd.read_csv(data_path/'train/train.csv')
 test_data = pd.read_csv(data_path/'test/test.csv')
 sample_submission = pd.read_csv(str(data_path/'sample_submission.csv'))

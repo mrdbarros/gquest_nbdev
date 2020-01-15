@@ -2,10 +2,20 @@
 
 __all__ = ["index", "modules", "custom_doc_links", "git_url"]
 
-index = {"data_path": "00_encoder.ipynb",
+index = {"data_path": "01_decoder.ipynb",
          "train_data": "01_decoder.ipynb",
          "test_data": "01_decoder.ipynb",
-         "sample_submission": "01_decoder.ipynb"}
+         "sample_submission": "01_decoder.ipynb",
+         "target_columns": "01_decoder.ipynb",
+         "text_columns": "01_decoder.ipynb",
+         "splits": "01_decoder.ipynb",
+         "df_tokenized,token_count": "01_decoder.ipynb",
+         "x_tfms": "01_decoder.ipynb",
+         "dbunch": "01_decoder.ipynb",
+         "#dbunch.show_batch(max_n": "01_decoder.ipynb",
+         "#learn": "01_decoder.ipynb",
+         "learn": "01_decoder.ipynb",
+         "text_regression_learner": "01_decoder.ipynb"}
 
 modules = ["encoder.py",
            "decoder.py"]
