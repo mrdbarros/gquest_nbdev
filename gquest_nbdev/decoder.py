@@ -17,7 +17,7 @@ import numpy as np
 from scipy.stats import spearmanr
 
 # Cell
-data_path = Path("/home/mrdbarros/projetos/data/gquest_data/")
+data_path = Path("/home/jupyter/mrdbarros/data/gquest_data/")
 
 # Cell
 print('Reading data...')
@@ -57,7 +57,7 @@ x_tfms = [attrgetter("text"), Numericalize(vocab=lm_vocab)]
 torch.cuda.empty_cache()
 
 # Cell
-dbunch = dsrc.databunch(before_batch=pad_input,bs=2)
+dbunch = dsrc.databunch(before_batch=pad_input,bs=16)
 
 
 # Cell
@@ -69,7 +69,7 @@ torch.cuda.empty_cache()
 
 # Cell
 #learn = text_classifier_learner(dbunch, AWD_LSTM, metrics=[accuracy], path=data_path,drop_mult=0.5)
-learn = text_regression_learner(dbunch, AWD_LSTM,seq_len=10, path=data_path,drop_mult=0.5).to_fp16()
+learn = text_regression_learner(dbunch, AWD_LSTM,seq_len=300, path=data_path,drop_mult=0.5).to_fp16()
 
 # Cell
 learn = learn.load_encoder('enc1')
