@@ -44,7 +44,6 @@ text_columns=['question_title', 'question_body', 'question_user_name',
        'question_user_page', 'answer', 'answer_user_name', 'answer_user_page',
        'url', 'category', 'host']
 
-
 # Cell
 splits = RandomSplitter()(train_data)
 
@@ -52,17 +51,14 @@ splits = RandomSplitter()(train_data)
 df_tokenized,token_count=tokenize_df(train_data,text_columns)
 x_tfms = [attrgetter("text"), Numericalize(vocab=lm_vocab)]
 
-
 # Cell
 torch.cuda.empty_cache()
 
 # Cell
 dbunch = dsrc.databunch(before_batch=pad_input,bs=16)
 
-
 # Cell
 #dbunch.show_batch(max_n=2,trunc_at=60)
-
 
 # Cell
 torch.cuda.empty_cache()
@@ -73,7 +69,6 @@ learn = text_regression_learner(dbunch, AWD_LSTM,seq_len=300, path=data_path,dro
 
 # Cell
 learn = learn.load_encoder('enc1')
-
 
 # Cell
 len(target_columns)

@@ -2,8 +2,8 @@
 
 __all__ = ['seed_all', 'MODEL_CLASSES', 'TransformersBaseTokenizer', 'Tokenizer_MultiColumn', 'TransformersVocab',
            'TokenizeProcessorDualBert', 'no_collate', 'TextClasDataBunch_Multi', 'TextList_Multi', 'MixedObjectList',
-           'CustomTransformerModel', 'AvgSpearman', 'AvgSpearman2', 'FlattenedLoss_BWW', 'CrossEntropyFlat_BWW',
-           'model_unfreezing_and_training', 'get_preds_as_nparray']
+           'MixedObjectLists', 'LabelList_Multi', 'CustomTransformerModel', 'AvgSpearman', 'AvgSpearman2',
+           'FlattenedLoss_BWW', 'CrossEntropyFlat_BWW', 'model_unfreezing_and_training', 'get_preds_as_nparray']
 
 # Cell
 import numpy as np # linear algebra
@@ -26,6 +26,8 @@ from fastai.callbacks import *
 from scipy.stats import spearmanr
 
 # transformers
+from fastai.tabular import *
+
 from transformers import PreTrainedModel, PreTrainedTokenizer, PretrainedConfig,RobertaModel
 from transformers import RobertaForSequenceClassification, RobertaTokenizer, RobertaConfig,AlbertForSequenceClassification, AlbertTokenizer, AlbertConfig
 
@@ -92,7 +94,6 @@ class Tokenizer_MultiColumn(Tokenizer):
         tok = self.tok_func(self.lang)
         if self.special_cases: tok.add_special_cases(self.special_cases)
         return [self.process_text(t, tok) for t in texts]
-
 
 # Cell
 class TransformersVocab(Vocab):
@@ -179,19 +180,90 @@ class TextClasDataBunch_Multi(TextDataBunch):
 class TextList_Multi(TextList):
     _bunch=TextClasDataBunch_Multi
 
-
 # Cell
-class MixedObjectList(TextList_Multi):
+class MixedObjectList(ItemList):
     def __init__(self, item_lists):
         self.item_lists = item_lists
+        self._label_list, self._split = LabelList_Multi, MixedObjectLists
+        self.n = len(item_lists[0])
+        self.path = Path('.')
+        for i,o in enumerate(self.item_lists):
+            item_lists[i].parent=self
 
 
     @classmethod
     def from_df(cls, df_list:List[DataFrame], cols_list=None,item_type_list=None, processors=None, **kwargs)->'MixedObjectList':
         res=[]
+
         for i,df in enumerate(df_list):
-            res.append(item_type_list[i].from_df(df, cols=cols_list[i], processor=processors[i], **kwargs))
+            if item_type_list[i] is TabularList:
+                res.append(item_type_list[i].from_df(df[cols_list[i]], cat_names=cols_list[i], **kwargs))
+            else:
+                res.append(item_type_list[i].from_df(df, cols=cols_list[i], processor=processors[i], **kwargs))
+        return cls(res)
+
+    def split_by_idxs(self, train_idx, valid_idx):
+        "Split the data between `train_idx` and `valid_idx`."
+        train=[]
+        valid=[]
+        for i,o in enumerate(self.item_lists):
+            self.item_lists[i]=self.item_lists[i].split_by_list(self.item_lists[i][train_idx], self.item_lists[i][valid_idx])
+            train.append(self.item_lists[i].train)
+            valid.append(self.item_lists[i].valid)
+
+        return self._split(self.path,train, valid)
+
+    def split_subsets(self, train_size:float, valid_size:float, seed=None) -> 'MixedObjectLists':
+        "Split the items into train set with size `train_size * n` and valid set with size `valid_size * n`."
+        assert 0 < train_size < 1
+        assert 0 < valid_size < 1
+        assert train_size + valid_size <= 1.
+        if seed is not None: np.random.seed(seed)
+        n = self.n
+        rand_idx = np.random.permutation(range(n))
+        train_cut, valid_cut = int(train_size * n), int(valid_size * n)
+        return self.split_by_idxs(rand_idx[:train_cut], rand_idx[-valid_cut:])
+
+# Cell
+class MixedObjectLists(ItemLists):
+    def __init__(self, path,train: ItemList, valid: ItemList):
+        self.path, self.train, self.valid, self.test = path, train, valid, None
+
+
+    def __repr__(self)->str:
+        return f'{self.__class__.__name__};\n\nTrain: {self.train};\n\nValid: {self.valid};\n\nTest: {self.test}'
+
+    def __getattr__(self, k):
+        ft = getattr(self.train[0], k)
+        if not isinstance(ft, Callable): return ft
+        fv = getattr(self.valid[0], k)
+        assert isinstance(fv, Callable)
+        def _inner(*args, **kwargs):
+            self.train = ft(*args, from_item_lists=True, **kwargs)
+            assert isinstance(self.train, LabelList)
+            kwargs['label_cls'] = self.train.y.__class__
+            self.valid = fv(*args, from_item_lists=True, **kwargs)
+            self.__class__ = LabelList
+            self.process()
+            return self
+        return _inner
+
+    def __setstate__(self,data:Any): self.__dict__.update(data)
+
+    def _label_from_list(self, labels:Iterator, label_cls:Callable=None, from_item_lists:bool=False, **kwargs)->'LabelList':
+        "Label `self.items` with `labels`."
+        if not from_item_lists:
+            raise Exception("Your data isn't split, if you don't want a validation set, please use `split_none`.")
+        labels = array(labels, dtype=object)
+        label_cls = self.get_label_cls(labels, label_cls=label_cls, **kwargs)
+        y = label_cls(labels, path=self.path, **kwargs)
+        res = self._label_list(x=self.parent, y=y)
         return res
+
+# Cell
+class LabelList_Multi(LabelList):
+    def __init__(self, x:ItemList, y:ItemList, tfms=None, tfm_y:bool=False, **kwargs):
+        super().__init__(x,y,tfms,tfm_y,**kwargs)
 
 # Cell
 class CustomTransformerModel(nn.Module):
@@ -253,8 +325,6 @@ class AvgSpearman(Callback):
         res = spearsum/self.target.shape[1]
         return add_metrics(last_metrics, res)
 
-
-
 # Cell
 class AvgSpearman2(Callback):
 
@@ -286,7 +356,6 @@ class AvgSpearman2(Callback):
             pos +=column_distinct_size
         res = spearsum/self.target.shape[1]
         return add_metrics(last_metrics, res)
-
 
 # Cell
 class FlattenedLoss_BWW(FlattenedLoss):
@@ -341,7 +410,6 @@ def model_unfreezing_and_training(num_groups,learning_rates,unfreeze_layers,epoc
         learner.fit_one_cycle(epochs[layer],
                               max_lr=slice(learning_rates[layer]*0.95**num_groups, learning_rates[layer]),
                               moms=(0.8, 0.9))
-
 
 # Cell
 def get_preds_as_nparray(ds_type,unique_sorted_values,databunch)  -> np.ndarray:
