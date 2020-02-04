@@ -2,8 +2,9 @@
 
 __all__ = ['seed_all', 'MODEL_CLASSES', 'TransformersBaseTokenizer', 'Tokenizer_MultiColumn', 'TransformersVocab',
            'TokenizeProcessorDualBert', 'no_collate', 'TextClasDataBunch_Multi', 'TextList_Multi', 'MixedObjectList',
-           'MixedObjectLists', 'LabelList_Multi', 'CustomTransformerModel', 'AvgSpearman', 'AvgSpearman2',
-           'FlattenedLoss_BWW', 'CrossEntropyFlat_BWW', 'model_unfreezing_and_training', 'get_preds_as_nparray']
+           'MixedObjectLists', 'LabelList_Multi', 'LabelLists_Multi', 'CustomTransformerModel', 'AvgSpearman',
+           'AvgSpearman2', 'FlattenedLoss_BWW', 'CrossEntropyFlat_BWW', 'model_unfreezing_and_training',
+           'get_preds_as_nparray']
 
 # Cell
 import numpy as np # linear algebra
@@ -180,6 +181,7 @@ class TextClasDataBunch_Multi(TextDataBunch):
 class TextList_Multi(TextList):
     _bunch=TextClasDataBunch_Multi
 
+
 # Cell
 class MixedObjectList(ItemList):
     def __init__(self, item_lists):
@@ -188,7 +190,7 @@ class MixedObjectList(ItemList):
         self.n = len(item_lists[0])
         self.path = Path('.')
         for i,o in enumerate(self.item_lists):
-            item_lists[i].parent=self
+            item_lists[i].parent_data_group=weakref.ref(self)
 
 
     @classmethod
@@ -197,7 +199,7 @@ class MixedObjectList(ItemList):
 
         for i,df in enumerate(df_list):
             if item_type_list[i] is TabularList:
-                res.append(item_type_list[i].from_df(df[cols_list[i]], cat_names=cols_list[i], **kwargs))
+                res.append(item_type_list[i].from_df(df, cat_names=cols_list[i], **kwargs))
             else:
                 res.append(item_type_list[i].from_df(df, cols=cols_list[i], processor=processors[i], **kwargs))
         return cls(res)
@@ -208,10 +210,12 @@ class MixedObjectList(ItemList):
         valid=[]
         for i,o in enumerate(self.item_lists):
             self.item_lists[i]=self.item_lists[i].split_by_list(self.item_lists[i][train_idx], self.item_lists[i][valid_idx])
+            self.item_lists[i].train.parent_data_group = weakref.ref(self)
+            self.item_lists[i].valid.parent_data_group = weakref.ref(self)
             train.append(self.item_lists[i].train)
             valid.append(self.item_lists[i].valid)
 
-        return self._split(self.path,train, valid)
+        return self._split(self.path, train, valid)
 
     def split_subsets(self, train_size:float, valid_size:float, seed=None) -> 'MixedObjectLists':
         "Split the items into train set with size `train_size * n` and valid set with size `valid_size * n`."
@@ -243,7 +247,7 @@ class MixedObjectLists(ItemLists):
             assert isinstance(self.train, LabelList)
             kwargs['label_cls'] = self.train.y.__class__
             self.valid = fv(*args, from_item_lists=True, **kwargs)
-            self.__class__ = LabelList
+            self.__class__ = LabelLists_Multi
             self.process()
             return self
         return _inner
@@ -260,10 +264,71 @@ class MixedObjectLists(ItemLists):
         res = self._label_list(x=self.parent, y=y)
         return res
 
+    def label_from_df(self, *args, **kwargs):
+        "Label `self.items` from the values in `cols` in `self.inner_df`."
+
+
+        for i,o in enumerate(self.train):
+            ft = getattr(self.train[i], 'label_from_df')
+            fv = getattr(self.valid[i], 'label_from_df')
+            self.train[i]=ft(*args, from_item_lists=True, **kwargs)
+
+            kwargs['label_cls'] = self.train[i].y.__class__
+            self.valid[i] = fv(*args, from_item_lists=True, **kwargs)
+
+        self.train_y = self.train[0].y
+        self.valid_y = self.valid[0].y
+        self.__class__ = LabelLists_Multi
+        self.process()
+        return self
+
+
+
+
 # Cell
 class LabelList_Multi(LabelList):
-    def __init__(self, x:ItemList, y:ItemList, tfms=None, tfm_y:bool=False, **kwargs):
-        super().__init__(x,y,tfms,tfm_y,**kwargs)
+    def __init__(self,parent_data_group,*args,**kwargs):
+        self.parent_data_group=parent_data_group
+        super().__init__(*args,**kwargs)
+
+
+
+# Cell
+class LabelLists_Multi(LabelLists):
+
+    def get_processors(self):
+        "Read the default class processors if none have been set."
+        procs_x,procs_y = [listify(self.train[i].x._processor) for i in range_of(self.train)],listify(self.train[0].y._processor)
+
+        xp = [ifnone(self.train[i].x.processor, [p(ds=self.train[i].x) for p in procs_x[i]]) for i in range_of(self.train)]
+        yp = ifnone(self.train_y.processor, [p(ds=self.train_y) for p in procs_y])
+        return xp,yp
+
+
+    def process(self):
+        "Process the inner datasets."
+        xp, yp = self.get_processors()
+        for ds, n in zip(self.lists, ['train', 'valid', 'test']):
+            for i,o in enumerate(ds):
+                o.process(xp[i], yp, name=n)
+        # progress_bar clear the outputs so in some case warnings issued during processing disappear.
+        for ds in self.lists:
+            for i,o in enumerate(ds):
+                if getattr(o, 'warn', False): warn(o.warn)
+        return self
+
+    def databunch(self, path:PathOrStr=None, bs:int=64, val_bs:int=None, num_workers:int=defaults.cpus,
+                  dl_tfms:Optional[Collection[Callable]]=None, device:torch.device=None, collate_fn:Callable=data_collate,
+                  no_check:bool=False, **kwargs)->'DataBunch':
+        "Create an `DataBunch` from self, `path` will override `self.path`, `kwargs` are passed to `DataBunch.create`."
+        path = Path(ifnone(path, self.path))
+        data = self.x._bunch.create(self.train, self.valid, test_ds=self.test, path=path, bs=bs, val_bs=val_bs,
+                                    num_workers=num_workers, dl_tfms=dl_tfms, device=device, collate_fn=collate_fn, no_check=no_check, **kwargs)
+        if getattr(self, 'normalize', False):#In case a normalization was serialized
+            norm = self.normalize
+            data.normalize((norm['mean'], norm['std']), do_x=norm['do_x'], do_y=norm['do_y'])
+        data.label_list = self
+        return data
 
 # Cell
 class CustomTransformerModel(nn.Module):
