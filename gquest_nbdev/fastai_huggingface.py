@@ -340,11 +340,12 @@ class LabelLists_Multi(LabelLists):
 
 # Cell
 class CustomTransformerModel(nn.Module):
-    def __init__(self, transformer_model_q: PreTrainedModel, transformer_model_a: PreTrainedModel):
+    def __init__(self, transformer_model_q: PreTrainedModel, transformer_model_a: PreTrainedModel,emb_sizes=None):
         super(CustomTransformerModel,self).__init__()
         self.transformer_q = transformer_model_q
         self.transformer_a = transformer_model_a
-        self.classifier=torch.nn.Sequential(torch.nn.Linear(1537,400),torch.nn.ReLU(),torch.nn.Linear(400,200),torch.nn.ReLU())
+        self.tabular = TabularModel(emb_sizes,0,20,[20,20],ps=[0.1,0.1])
+        self.classifier=torch.nn.Sequential(torch.nn.Linear(1556,400),torch.nn.Sigmoid())
         self.dropout = torch.nn.Dropout(0.1)
 
     def forward(self, input_text,input_categorical):
@@ -365,7 +366,6 @@ class CustomTransformerModel(nn.Module):
 
         output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
         logits = self.classifier(torch.cat((output,input_categorical[0][0]),dim=1))
-        logits = self.dropout(logits)
         return logits
 
 # Cell
