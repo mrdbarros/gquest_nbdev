@@ -344,19 +344,19 @@ class CustomTransformerModel(nn.Module):
         super(CustomTransformerModel,self).__init__()
         self.transformer_q = transformer_model_q
         self.transformer_a = transformer_model_a
-        self.classifier = torch.nn.Linear(1536,200)
+        self.classifier=torch.nn.Sequential(torch.nn.Linear(1537,400),torch.nn.ReLU(),torch.nn.Linear(400,200),torch.nn.ReLU())
         self.dropout = torch.nn.Dropout(0.1)
 
-    def forward(self, inputs):
+    def forward(self, input_text,input_categorical):
         #pdb.set_trace()
 
-        q_id=inputs[:,0,0,:]
-        q_mask=inputs[:,0,1,:]
-        q_atn=inputs[:,0,2,:]
+        q_id=input_text[:,0,0,:]
+        q_mask=input_text[:,0,1,:]
+        q_atn=input_text[:,0,2,:]
 
-        a_id=inputs[:,1,0,:]
-        a_mask=inputs[:,1,1,:]
-        a_atn=inputs[:,1,2,:]
+        a_id=input_text[:,1,0,:]
+        a_mask=input_text[:,1,1,:]
+        a_atn=input_text[:,1,2,:]
 
         logits_q = torch.mean(self.transformer_q(q_id,
                                 attention_mask = q_mask, token_type_ids=q_atn)[0] ,dim=1)
@@ -364,7 +364,8 @@ class CustomTransformerModel(nn.Module):
                                 attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
         output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
-        logits = self.classifier(output)
+        logits = self.classifier(torch.cat((output,input_categorical),dim=1))
+        logits = self.dropout(logits)
         return logits
 
 # Cell
@@ -436,7 +437,11 @@ class AddExtraBunch(LearnerCallback):
 
     def on_batch_begin(self, last_input, last_target, train, **kwargs):
         "Applies mixup to `last_input` and `last_target` if `train`."
-        new_input,new_target=None,None
+        if self.learn.train_bn:
+            categorical_input = next(iter(self.learn.data.secondary_bunch.train_dl))
+        else:
+            categorical_input = next(iter(self.learn.data.secondary_bunch.valid_dl))
+        new_input,new_target=(last_input,categorical_input),last_target
         return {'last_input': new_input, 'last_target': new_target}
 
 
