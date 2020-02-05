@@ -345,7 +345,7 @@ class CustomTransformerModel(nn.Module):
         self.transformer_q = transformer_model_q
         self.transformer_a = transformer_model_a
         self.tabular = TabularModel(emb_sizes,0,20,[20,20],ps=[0.1,0.1])
-        self.classifier=torch.nn.Sequential(torch.nn.Linear(1556,400),torch.nn.Sigmoid())
+        self.classifier=torch.nn.Sequential(torch.nn.Linear(1556,30),torch.nn.Sigmoid())
         self.dropout = torch.nn.Dropout(0.1)
 
     def forward(self, input_text,input_categorical):
@@ -365,7 +365,8 @@ class CustomTransformerModel(nn.Module):
                                 attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
         output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
-        logits = self.classifier(torch.cat((output,input_categorical[0][0]),dim=1))
+        categ_tabular=self.tabular(input_categorical[0][0],None)
+        logits = self.classifier(torch.cat((output,categ_tabular),dim=1))
         return logits
 
 # Cell
@@ -390,21 +391,16 @@ class AvgSpearman(Callback):
             column_distinct_size = len(self.labels[i])
             #pdb.set_trace()
             processed_target = self.target[:,i]
-            #processed_pred = self.labels[torch.argmax(torch.tensor(self.preds),1)]
-            processed_pred = torch.matmul(F.softmax(torch.tensor(self.preds[:,pos:(pos+column_distinct_size)]),1),
-                                          torch.tensor(self.labels[i]))
-            spearsum +=spearmanr(processed_pred,processed_target).correlation
-
-            pos +=column_distinct_size
+            processed_pred = self.preds[:,i]
+            #processed_pred = torch.matmul(F.softmax(torch.tensor(self.preds[:,pos:(pos+column_distinct_size)]),1),torch.tensor(self.labels[i]))
+            spearsum+=spearmanr(processed_pred,processed_target).correlation
         res = spearsum/self.target.shape[1]
         return add_metrics(last_metrics, res)
-
 # Cell
 class AvgSpearman2(Callback):
 
-    def __init__(self, labels,*args,**kwargs):
+    def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
-        self.labels=labels
 
     def on_epoch_begin(self, **kwargs):
         self.preds = np.empty( shape=(0, 200) )
@@ -447,6 +443,7 @@ class AddExtraBunch(LearnerCallback):
 
 
 # Cell
+import pdb
 class FlattenedLoss_BWW(FlattenedLoss):
     def __init__(self,unique_sorted_values,*args,**kwargs):
         super().__init__(*args,**kwargs)
@@ -455,7 +452,7 @@ class FlattenedLoss_BWW(FlattenedLoss):
 
 
     def __call__(self, input:Tensor, target:Tensor, **kwargs)->Rank0Tensor:
-
+        
         input = input.transpose(self.axis,-1).contiguous()
         target = target.transpose(self.axis,-1).contiguous()
         if self.floatify: target = target.float()
@@ -464,9 +461,9 @@ class FlattenedLoss_BWW(FlattenedLoss):
         pos = 0
         labeled_target=torch.empty(target.shape[0],target.shape[1],dtype=torch.long).cuda()
         for i in range(len(self.unique_sorted_values)):
-
+            pdb.set_trace() 
             for j in range(len(self.unique_sorted_values[i])):
-                labeled_target[(target[:,i]== self.unique_sorted_values[i][j]).nonzero(as_tuple=True),i] = j
+                labeled_target[(target[:,i]== self.unique_sorted_values[i][j]).nonzero(as_tuple=True)][:i] = j
                 if j==0:
                     occurences = (target[:,i] == self.unique_sorted_values[i][j]).sum(dtype=torch.float).unsqueeze(dim=0)
                 else:
