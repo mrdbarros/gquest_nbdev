@@ -364,7 +364,7 @@ class CustomTransformerModel(nn.Module):
                                 attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
         output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
-        logits = self.classifier(torch.cat((output,input_categorical),dim=1))
+        logits = self.classifier(torch.cat((output,input_categorical[0][0]),dim=1))
         logits = self.dropout(logits)
         return logits
 
