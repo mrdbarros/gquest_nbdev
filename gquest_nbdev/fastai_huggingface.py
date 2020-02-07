@@ -360,10 +360,10 @@ class CustomTransformerModel(nn.Module):
 
         logits_q = torch.mean(self.transformer_q(q_id,
                                 attention_mask = q_mask, token_type_ids=q_atn)[0] ,dim=1)
-        #logits_a = torch.mean(self.transformer_a(a_id,
-        #                        attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
+        logits_a = torch.mean(self.transformer_a(a_id,
+                                attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
-        output=self.dropout(torch.cat((logits_q, logits_q), dim=1))
+        output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
         logits=self.classifier(input_categorical[0][0],output)
         return logits
 
