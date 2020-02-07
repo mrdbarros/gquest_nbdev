@@ -401,7 +401,7 @@ class AvgSpearman2(Callback):
         super().__init__(*args,**kwargs)
 
     def on_epoch_begin(self, **kwargs):
-        self.preds = np.empty( shape=(0, 200) )
+        self.preds = np.empty( shape=(0, 30) )
         self.target = np.empty( shape=(0,30) )
 
     def on_batch_end(self, last_output, last_target, **kwargs):
