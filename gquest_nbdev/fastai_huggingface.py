@@ -344,8 +344,7 @@ class CustomTransformerModel(nn.Module):
         super(CustomTransformerModel,self).__init__()
         self.transformer_q = transformer_model_q
         self.transformer_a = transformer_model_a
-        self.tabular = TabularModel(emb_sizes,0,20,[20,20],ps=[0.1,0.1])
-        self.classifier=torch.nn.Sequential(torch.nn.Linear(1556,30),torch.nn.Sigmoid())
+        self.classifier = TabularModel(emb_sizes,1536, 30,[800,400],ps=[0.1,0.1])
         self.dropout = torch.nn.Dropout(0.1)
 
     def forward(self, input_text,input_categorical):
@@ -361,12 +360,11 @@ class CustomTransformerModel(nn.Module):
 
         logits_q = torch.mean(self.transformer_q(q_id,
                                 attention_mask = q_mask, token_type_ids=q_atn)[0] ,dim=1)
-        logits_a = torch.mean(self.transformer_a(a_id,
-                                attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
+        #logits_a = torch.mean(self.transformer_a(a_id,
+        #                        attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
-        output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
-        categ_tabular=self.tabular(input_categorical[0][0],None)
-        logits = self.classifier(torch.cat((output,categ_tabular),dim=1))
+        output=self.dropout(torch.cat((logits_q, logits_q), dim=1))
+        logits=self.classifier(input_categorical[0][0],output)
         return logits
 
 # Cell
@@ -459,11 +457,11 @@ class FlattenedLoss_BWW(FlattenedLoss):
         input = input.view(-1,input.shape[-1]) if self.is_2d else input.view(-1)
         self.total_entropy=0.0
         pos = 0
-        labeled_target=torch.empty(target.shape[0],target.shape[1],dtype=torch.long).cuda()
+
         for i in range(len(self.unique_sorted_values)):
-            pdb.set_trace() 
+            labeled_target = torch.empty(target.shape[0], dtype=torch.long).cuda()
             for j in range(len(self.unique_sorted_values[i])):
-                labeled_target[(target[:,i]== self.unique_sorted_values[i][j]).nonzero(as_tuple=True)][:i] = j
+                labeled_target[(target[:,i]== self.unique_sorted_values[i][j]).nonzero()] = j
                 if j==0:
                     occurences = (target[:,i] == self.unique_sorted_values[i][j]).sum(dtype=torch.float).unsqueeze(dim=0)
                 else:
@@ -473,7 +471,7 @@ class FlattenedLoss_BWW(FlattenedLoss):
             self.func.weight = new_weights
             #pdb.set_trace()
             self.total_entropy+=self.func.__call__(input[:,pos:(pos+len(self.unique_sorted_values[i]))],
-                                              labeled_target[:,i], **kwargs)
+                                              labeled_target, **kwargs)
             pos+=len(self.unique_sorted_values[i])
         return self.total_entropy/len(self.unique_sorted_values)
 
