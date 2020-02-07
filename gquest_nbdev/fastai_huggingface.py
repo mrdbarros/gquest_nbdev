@@ -3,8 +3,8 @@
 __all__ = ['seed_all', 'MODEL_CLASSES', 'TransformersBaseTokenizer', 'Tokenizer_MultiColumn', 'TransformersVocab',
            'TokenizeProcessorDualBert', 'no_collate', 'TextClasDataBunch_Multi', 'TextList_Multi',
            'MixedObjectDataBunch', 'MixedObjectLists', 'MixedObjectList', 'LabelList_Multi', 'LabelLists_Multi',
-           'CustomTransformerModel', 'AvgSpearman', 'AvgSpearman2', 'AddExtraBunch', 'FlattenedLoss_BWW',
-           'CrossEntropyFlat_BWW', 'model_unfreezing_and_training', 'get_preds_as_nparray']
+           'TabularModel', 'CustomTransformerModel', 'AvgSpearman', 'AvgSpearman2', 'AddExtraBunch',
+           'FlattenedLoss_BWW', 'CrossEntropyFlat_BWW', 'model_unfreezing_and_training', 'get_preds_as_nparray']
 
 # Cell
 import numpy as np # linear algebra
@@ -339,12 +339,53 @@ class LabelLists_Multi(LabelLists):
         return databunchs[0]
 
 # Cell
+class TabularModel_NoCat(Module):
+    "Basic model for tabular data."
+    def __init__(self, emb_szs:ListSizes, n_cont:int, out_sz:int, layers:Collection[int], ps:Collection[float]=None,
+                 emb_drop:float=0., y_range:OptRange=None, use_bn:bool=True, bn_final:bool=False):
+        super().__init__()
+        ps = ifnone(ps, [0]*len(layers))
+        ps = listify(ps, layers)
+
+        self.emb_drop = nn.Dropout(emb_drop)
+        self.bn_cont = nn.BatchNorm1d(n_cont)
+
+        self.embeds = nn.ModuleList([embedding(ni, nf) for ni, nf in emb_szs])
+        n_emb = sum(e.embedding_dim for e in self.embeds)
+
+
+        self.n_emb,self.n_cont,self.y_range = n_emb,n_cont,y_range
+        sizes = self.get_sizes(layers, out_sz)
+        actns = [nn.ReLU(inplace=True) for _ in range(len(sizes)-2)] + [None]
+        layers = []
+        for i,(n_in,n_out,dp,act) in enumerate(zip(sizes[:-1],sizes[1:],[0.]+ps,actns)):
+            layers += bn_drop_lin(n_in, n_out, bn=use_bn and i!=0, p=dp, actn=act)
+        if bn_final: layers.append(nn.BatchNorm1d(sizes[-1]))
+        self.layers = nn.Sequential(*layers)
+
+    def get_sizes(self, layers, out_sz):
+        return [self.n_emb + self.n_cont] + layers + [out_sz]
+
+    def forward(self, x_cat:Tensor, x_cont:Tensor) -> Tensor:
+        if self.n_emb != 0:
+            x = [e(x_cat[:,i]) for i,e in enumerate(self.embeds)]
+            x = torch.cat(x, 1)
+            x = self.emb_drop(x)
+        if self.n_cont != 0:
+            x_cont = self.bn_cont(x_cont)
+            x = torch.cat([x, x_cont], 1) if self.n_emb != 0 else x_cont
+        x = self.layers(x)
+        if self.y_range is not None:
+            x = (self.y_range[1]-self.y_range[0]) * torch.sigmoid(x) + self.y_range[0]
+        return x
+
+# Cell
 class CustomTransformerModel(nn.Module):
     def __init__(self, transformer_model_q: PreTrainedModel, transformer_model_a: PreTrainedModel,emb_sizes=None):
         super(CustomTransformerModel,self).__init__()
         self.transformer_q = transformer_model_q
         self.transformer_a = transformer_model_a
-        self.classifier = TabularModel(emb_sizes,1536, 30,[800,400],ps=[0.1,0.1])
+        self.classifier = TabularModel_NoCat(emb_sizes,1536, 30,[800,400],ps=[0.1,0.1])
         self.dropout = torch.nn.Dropout(0.1)
 
     def forward(self, input_text,input_categorical):
@@ -364,7 +405,8 @@ class CustomTransformerModel(nn.Module):
                                 attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
         output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
-        logits=self.classifier(input_categorical[0][0],output)
+        #logits=self.classifier(input_categorical[0][0],output)
+        logits = self.classifier(None, output)
         return logits
 
 # Cell
@@ -394,6 +436,7 @@ class AvgSpearman(Callback):
             spearsum+=spearmanr(processed_pred,processed_target).correlation
         res = spearsum/self.target.shape[1]
         return add_metrics(last_metrics, res)
+
 # Cell
 class AvgSpearman2(Callback):
 
@@ -437,8 +480,6 @@ class AddExtraBunch(LearnerCallback):
         new_input,new_target=(last_input,categorical_input),last_target
         return {'last_input': new_input, 'last_target': new_target}
 
-
-
 # Cell
 import pdb
 class FlattenedLoss_BWW(FlattenedLoss):
@@ -449,7 +490,7 @@ class FlattenedLoss_BWW(FlattenedLoss):
 
 
     def __call__(self, input:Tensor, target:Tensor, **kwargs)->Rank0Tensor:
-        
+
         input = input.transpose(self.axis,-1).contiguous()
         target = target.transpose(self.axis,-1).contiguous()
         if self.floatify: target = target.float()
