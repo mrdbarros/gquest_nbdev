@@ -412,29 +412,28 @@ class AvgSpearman2(Callback):
         pos = 0
         spearsum=0.0
         for i in range(self.target.shape[1]):
-            column_distinct_size = len(self.labels[i])
             #pdb.set_trace()
             processed_target = self.target[:,i]
-            processed_pred = self.labels[i][torch.argmax(torch.tensor(self.preds[:,pos:(pos+column_distinct_size)]),1)]
+            processed_pred = self.preds[:,i]
             #processed_pred = torch.matmul(F.softmax(torch.tensor(self.preds[:,pos:(pos+column_distinct_size)]),1),torch.tensor(self.labels[i]))
             spearnew=spearmanr(processed_pred,processed_target).correlation
-            print(spearnew)
             spearsum +=spearnew
 
-            pos +=column_distinct_size
         res = spearsum/self.target.shape[1]
         return add_metrics(last_metrics, res)
 
 # Cell
 class AddExtraBunch(LearnerCallback):
-
+    def on_epoch_begin(self,**kwargs):
+        self.secondary_train_iter=iter(self.learn.data.secondary_bunch.train_dl)
+        self.secondary_valid_iter = iter(self.learn.data.secondary_bunch.valid_dl)
 
     def on_batch_begin(self, last_input, last_target, train, **kwargs):
         "Applies mixup to `last_input` and `last_target` if `train`."
-        if self.learn.train_bn:
-            categorical_input = next(iter(self.learn.data.secondary_bunch.train_dl))
+        if train:
+            categorical_input = next(self.secondary_train_iter)
         else:
-            categorical_input = next(iter(self.learn.data.secondary_bunch.valid_dl))
+            categorical_input = next(self.secondary_valid_iter)
         new_input,new_target=(last_input,categorical_input),last_target
         return {'last_input': new_input, 'last_target': new_target}
 
