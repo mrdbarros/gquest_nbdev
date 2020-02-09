@@ -453,7 +453,12 @@ class CustomTransformerModel(nn.Module):
         super(CustomTransformerModel,self).__init__()
         self.transformer_q = transformer_model_q
         self.transformer_a = transformer_model_a
-        self.classifier = TabularModel_NoCat(emb_sizes,1536, 30,[400],ps=[0.1],use_bn=False)
+        #self.classifier = TabularModel_NoCat(emb_sizes,1536, 30,[400],ps=[0.1],use_bn=False)
+        
+        self.embeds = nn.ModuleList([embedding(ni, nf) for ni, nf in emb_sizes])
+        n_emb = sum(e.embedding_dim for e in self.embeds)
+        self.classifier=torch.nn.Linear(1536+n_emb,30)
+        
         self.dropout = torch.nn.Dropout(0.1)
 
     def forward(self, input_text,input_categorical):
@@ -473,8 +478,13 @@ class CustomTransformerModel(nn.Module):
                                 attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
         output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
-        logits=self.classifier(input_categorical[0][0],output)
-        #logits = self.classifier(None, output)
+        
+        x_cat=input_categorical[0][0] 
+        x = [e(x_cat[:,i]) for i,e in enumerate(self.embeds)]
+        x = torch.cat(x, 1)
+        
+        #logits=self.classifier(x,output)
+        logits = self.classifier(torch.cat((x, output),dim=1))
         return logits
 
 # Cell
