@@ -406,7 +406,6 @@ class TabularModel_NoCat(Module):
     "Basic model for tabular data."
     def __init__(self, emb_szs:ListSizes, n_cont:int, out_sz:int, layers:Collection[int], ps:Collection[float]=None,
                  emb_drop:float=0., y_range:OptRange=None, use_bn:bool=True, bn_final:bool=False):
-        super().__init__()
         ps = ifnone(ps, [0]*len(layers))
         ps = listify(ps, layers)
 
@@ -448,7 +447,7 @@ class CustomTransformerModel(nn.Module):
         super(CustomTransformerModel,self).__init__()
         self.transformer_q = transformer_model_q
         self.transformer_a = transformer_model_a
-        self.classifier = TabularModel_NoCat(emb_sizes,1536, 30,[400],ps=[0.1,0.1],use_bn=False)
+        self.classifier = TabularModel_NoCat(emb_sizes,1536, 30,[400],ps=[0.1],use_bn=False)
         self.dropout = torch.nn.Dropout(0.1)
 
     def forward(self, input_text,input_categorical):
@@ -468,8 +467,8 @@ class CustomTransformerModel(nn.Module):
                                 attention_mask = a_mask, token_type_ids=a_atn)[0],dim=1)
 
         output=self.dropout(torch.cat((logits_q, logits_a), dim=1))
-        #logits=self.classifier(input_categorical[0][0],output)
-        logits = self.classifier(None, output)
+        logits=self.classifier(input_categorical[0][0],output)
+        #logits = self.classifier(None, output)
         return logits
 
 # Cell
@@ -532,6 +531,7 @@ class AvgSpearman2(Callback):
 class AddExtraBunch(LearnerCallback):
     def on_epoch_begin(self,**kwargs):
         self.first_batch=True
+        self.first_batch_valid=True
 
 
     def on_batch_begin(self, last_input, last_target, train, **kwargs):
@@ -544,13 +544,14 @@ class AddExtraBunch(LearnerCallback):
                 self.secondary_train_iter = iter(self.learn.data.secondary_bunch.train_dl)
 
             categorical_input = next(self.secondary_train_iter)
+            self.first_batch = False
         else:
-            if self.first_batch:
+            if self.first_batch_valid:
                 self.learn.data.secondary_bunch.valid_dl.sampler.exact_idxs = self.learn.data.valid_dl.sampler.current_idxs
                 self.secondary_valid_iter = iter(self.learn.data.secondary_bunch.valid_dl)
             categorical_input = next(self.secondary_valid_iter)
+            self.first_batch_valid=False
         new_input,new_target=(last_input,categorical_input),last_target
-        self.first_batch = False
         return {'last_input': new_input, 'last_target': new_target}
 
 
