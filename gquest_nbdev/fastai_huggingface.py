@@ -304,6 +304,21 @@ class MixedObjectLists(ItemLists):
         self.__class__ = LabelLists_Multi
         self.process()
         return self
+    
+    def testlist_from_df(self, df_list: List[DataFrame], cols_list=None, item_type_list=None, processors=None,
+                **kwargs) -> 'MixedObjectList':
+        res = []
+
+        for i, df in enumerate(df_list):
+            if i==1:
+                pre_process=item_type_list[i].from_df(df, cat_names=cols_list[i], **kwargs)
+                res.append(pre_process)
+            else:
+                pre_process=item_type_list[i].from_df(df, cols=cols_list[i], processor=processors[i], **kwargs)
+                res.append(pre_process)
+
+
+        return res
 
 # Cell
 class MixedObjectList(ItemList):
@@ -358,6 +373,8 @@ class LabelList_Multi(LabelList):
         self.parent_data_group=parent_data_group
         super().__init__(*args,**kwargs)
 
+
+
 # Cell
 class LabelLists_Multi(LabelLists):
     _bunch = MixedObjectDataBunch
@@ -381,6 +398,18 @@ class LabelLists_Multi(LabelLists):
             for i,o in enumerate(ds):
                 if getattr(o, 'warn', False): warn(o.warn)
         return self
+    
+    def add_test(self, items:Iterator, label:Any=None, tfms=None, tfm_y=None):
+        self.test=[]
+        for i, o in enumerate(items):
+            if label is None: labels = EmptyLabelList([0] * len(o))
+            else: labels = self.valid.y.new([label] * len(o)).process()
+            if isinstance(o, MixedItemList): o = self.valid[i].x.new(o.item_lists, inner_df=o.inner_df).process()
+            elif isinstance(o, ItemList): res = self.valid[i].x.new(o.items, inner_df=o.inner_df).process()
+            else: o = self.valid.x.new(o).process()
+            self.test.append(self.valid[i].new(res, labels, tfms=tfms, tfm_y=tfm_y))
+        return self
+    
 
     def databunch(self, path:PathOrStr=None, bs:int=64, val_bs:int=None, num_workers:int=defaults.cpus,
                   dl_tfms:Optional[Collection[Callable]]=None, device:torch.device=None, collate_fn:Callable=data_collate,
@@ -546,8 +575,8 @@ class AvgSpearman2(Callback):
 # Cell
 class AddExtraBunch(LearnerCallback):
     def on_epoch_begin(self,**kwargs):
-        self.first_batch=True
-        self.first_batch_valid=True
+        self.learn.first_batch=True
+        self.learn.first_batch_valid=True
 
 
     def on_batch_begin(self, last_input, last_target, train, **kwargs):
@@ -555,18 +584,25 @@ class AddExtraBunch(LearnerCallback):
 
         "Applies mixup to `last_input` and `last_target` if `train`."
         if train:
-            if self.first_batch:
+            if self.learn.first_batch:
                 self.learn.data.secondary_bunch.train_dl.sampler.exact_idxs=self.learn.data.train_dl.sampler.current_idxs
                 self.secondary_train_iter = iter(self.learn.data.secondary_bunch.train_dl)
 
             categorical_input = next(self.secondary_train_iter)
-            self.first_batch = False
+            self.learn.first_batch = False
         else:
-            if self.first_batch_valid:
-                self.learn.data.secondary_bunch.valid_dl.sampler.exact_idxs = self.learn.data.valid_dl.sampler.current_idxs
-                self.secondary_valid_iter = iter(self.learn.data.secondary_bunch.valid_dl)
-            categorical_input = next(self.secondary_valid_iter)
-            self.first_batch_valid=False
+            if self.learn.is_get_preds:
+                if self.learn.first_batch_test:
+                    self.learn.data.secondary_bunch.test_dl.sampler.exact_idxs = self.learn.data.test_dl.sampler.current_idxs
+                    self.secondary_test_iter = iter(self.learn.data.secondary_bunch.test_dl)
+                categorical_input = next(self.secondary_test_iter)
+                self.learn.first_batch_test = False
+            else:
+                if self.learn.first_batch_valid:
+                    self.learn.data.secondary_bunch.valid_dl.sampler.exact_idxs = self.learn.data.valid_dl.sampler.current_idxs
+                    self.secondary_valid_iter = iter(self.learn.data.secondary_bunch.valid_dl)
+                categorical_input = next(self.secondary_valid_iter)
+                self.learn.first_batch_valid=False
         new_input,new_target=(last_input,categorical_input),last_target
         return {'last_input': new_input, 'last_target': new_target}
 
